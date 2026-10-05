@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbao/openbao/api/auth/approle/v2"
 	bao "github.com/openbao/openbao/api/v2"
+	"github.com/openbao/openbao/api/auth/approle/v2"
 )
 
 // Client is our small wrapper around the official client.
@@ -103,8 +103,8 @@ func (s *AppSecrets) JWTSigningKey() string { return s.jwtSigningKey }
 // value was loaded (and to notice when it changes) without ever revealing it.
 func (s *AppSecrets) Fingerprints() map[string]string {
 	return map[string]string{
-		"jwt_signing_key":          fingerprint(s.jwtSigningKey),
-		"meta_api_token":           fingerprint(s.metaAPIToken),
+		"jwt_signing_key":         fingerprint(s.jwtSigningKey),
+		"meta_api_token":          fingerprint(s.metaAPIToken),
 		"firebase_service_account": fingerprint(s.firebaseServiceAccount),
 	}
 }
@@ -133,6 +133,29 @@ func (c *Client) LoadAppSecrets(ctx context.Context, product string) (*AppSecret
 		return nil, err
 	}
 	return s, nil
+}
+
+// DBLogin is a database username + password read from OpenBao.
+type DBLogin struct {
+	Username string
+	Password string
+}
+
+// LoadDBLogin reads a static database login stored in KV, e.g. "kouventa/db"
+// (keys: username, password). M5 replaces this with dynamic credentials.
+func (c *Client) LoadDBLogin(ctx context.Context, path string) (*DBLogin, error) {
+	s, err := c.api.KVv2(c.kvMount).Get(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	var login DBLogin
+	if login.Username, err = stringField(s.Data, "username"); err != nil {
+		return nil, err
+	}
+	if login.Password, err = stringField(s.Data, "password"); err != nil {
+		return nil, err
+	}
+	return &login, nil
 }
 
 // ReadResult is what the /demo/read endpoint reports.
@@ -183,26 +206,4 @@ func stringField(data map[string]any, key string) (string, error) {
 func fingerprint(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return "sha256:" + hex.EncodeToString(sum[:])[:12]
-}
-
-// ListSecrets returns the names of the secrets under <product>/.
-func (c *Client) ListSecrets(ctx context.Context, product string) ([]string, error) {
-	secret, err := c.api.Logical().ListWithContext(ctx, c.kvMount+"/metadata/"+product) // a) generic LIST, real API path
-	if err != nil {
-		return nil, fmt.Errorf("listing %s: %w", product, err)
-	}
-	if secret == nil { // b) nothing to list → OpenBao returns no secret
-		return []string{}, nil
-	}
-	rawKeys, ok := secret.Data["keys"].([]any) // c) names are in secret.Data["keys"], as []any
-	if !ok {
-		return nil, errors.New("unexpected list response")
-	}
-	names := []string{}
-	for _, k := range rawKeys {
-		if name, ok := k.(string); ok {
-			names = append(names, name)
-		}
-	}
-	return names, nil
 }

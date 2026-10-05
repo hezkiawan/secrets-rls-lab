@@ -1,59 +1,50 @@
 # secrets-rls-lab
 
-A hands-on lab for the production team's research on **secrets management (OpenBao / HashiCorp Vault)** and **PostgreSQL Row Level Security**, using the team's stack: Go + Fiber v3, PostgreSQL, Docker.
+Research lab for the production team: **secrets management (OpenBao vs HashiCorp Vault)** and **PostgreSQL Row Level Security**, using the team's stack (Go + Fiber v3, PostgreSQL, PgBouncer).
 
-See [PLAN.md](PLAN.md) for the milestones and [docs/notes/](docs/notes/) for what each milestone teaches.
+| Folder | What it is |
+|---|---|
+| `docker-compose.yml`, `bootstrap/` | **Learning lab** (dev mode): OpenBao + Vault side by side, setup-as-code scripts for M1–M3 |
+| `reference/` | **Production-like reference stack**: PostgreSQL with RLS + PgBouncer (M3); OpenBao cluster + HAProxy (M5, next) |
+| `api/` | Go + Fiber v3 API: AppRole login, secrets from OpenBao, RLS-protected conversations API, demo page |
+| `docs/` | Findings and notes: `comparison-findings.md`, `notes/m0…m3` |
+
+See [PLAN.md](PLAN.md) for milestones.
 
 ## Requirements
+Docker Desktop (Compose v2) · Go 1.25+
 
-- Docker Desktop (Compose v2)
-- Go 1.25+ (Fiber v3 requires it)
-
-## Current milestone: M1 — AppRole login + secrets from OpenBao
-
-| Service | URL | Login |
-|---|---|---|
-| OpenBao UI + API | http://localhost:8200 | Token: `root` (dev mode only) |
-| pgAdmin | http://localhost:5050 | No login. Postgres password: `postgres-dev-only` |
-| PostgreSQL | localhost:5432 | `postgres` / `postgres-dev-only`, DB `supportdesk` |
-| Lab API | http://localhost:3000 | none |
-
-### Run it (PowerShell, from this folder)
+## Run everything (PowerShell, from this folder)
 
 ```powershell
-docker compose up -d               # start OpenBao, Postgres, pgAdmin
-docker compose ps                  # all should become "healthy"
-docker compose run --rm bootstrap  # load secrets, policy, AppRole into OpenBao
-                                   # (re-run after EVERY OpenBao restart — dev mode forgets)
+# 1. Learning lab: OpenBao (dev mode) — holds the API's secrets
+docker compose up -d
+docker compose run --rm bootstrap                         # M1: secrets, policy, AppRole
+docker compose run --rm bootstrap /bootstrap/m3-setup.sh  # M3: DB logins in OpenBao
+#   (re-run both after every OpenBao restart: dev mode forgets everything)
 
+# 2. Reference stack: PostgreSQL (RLS) + PgBouncer
+docker compose -f reference/docker-compose.yml up -d --build
+
+# 3. API
 cd api
-go mod tidy                        # after each milestone: downloads new dependencies
-go run .                           # start the API (Ctrl+C to stop)
+go mod tidy
+go run .
 ```
 
-Then open in the browser:
+Open **http://localhost:3000/** — the Conversation Desk demo page.
 
-- http://localhost:3000/livez  — is the API process alive?
-- http://localhost:3000/readyz — can it do real work (is OpenBao ready)?
-- http://localhost:3000/status — token policies + TTL, secret fingerprints (never values)
-- http://localhost:3000/demo/read?path=kouventa/app — allowed by the policy
-- http://localhost:3000/demo/read?path=otherproduct/app — denied (another product)
-- http://localhost:3000/demo/read?path=kouventa/admin/break-glass — denied (explicit deny)
+| URL | What |
+|---|---|
+| http://localhost:3000/ | RLS demo page: switch users, try to break it |
+| http://localhost:3000/status | OpenBao token + secret fingerprints (M1) |
+| http://localhost:3000/demo/read?path=otherproduct/app | OpenBao policy demo (M1) |
+| http://localhost:8200 / :8210 | OpenBao / Vault UI (token `root`) |
+| http://localhost:5050 / :5051 | pgAdmin: learning lab / reference database |
 
-### Stop / reset
+Optional comparison (M4): `docker compose --profile vault up -d vault`, then `docker compose run --rm bootstrap-vault`.
 
-```powershell
-docker compose down      # stop everything (Postgres data kept)
-docker compose down -v   # stop and delete Postgres data
-```
+## Versions (checked 2026-10-05)
+OpenBao 2.7.1 · Vault 2.1.1 · PostgreSQL 18 · PgBouncer 1.24 (Alpine) · pgAdmin 9.18 · Fiber v3.5.0 · pgx v5.11 · golang-jwt v5.3
 
-## Versions (checked 2026-10-02)
-
-| Component | Version | Source |
-|---|---|---|
-| OpenBao | 2.7.1 | github.com/openbao/openbao releases |
-| PostgreSQL | 18 | 19 is still in beta |
-| pgAdmin | 9.18 | github.com/pgadmin-org/pgadmin4 |
-| Fiber | v3.5.0 | github.com/gofiber/fiber |
-
-> ⚠️ Everything in this repo uses **dev-only** passwords and OpenBao **dev mode**. It is a lab, not a deployment template. Production setup is covered in M5.
+> ⚠️ Dev-only passwords and OpenBao dev mode throughout. This is a lab, not a deployment template. Production guidance lives in `docs/`.

@@ -1,0 +1,75 @@
+# reference/docker-compose.yml — the production-like reference stack.
+#
+# In real life each service here is its own VM (or managed service). The config files
+# mounted below are the same files you'd put on those VMs. See docs/deployment-guide.md.
+#
+# M3 (now):  PostgreSQL with RLS  +  PgBouncer (transaction pooling)
+# M5 (next): 3-node OpenBao cluster (Raft) + HAProxy load balancer
+#
+# Start:   docker compose -f reference/docker-compose.yml up -d --build
+# Reset:   docker compose -f reference/docker-compose.yml down -v   (deletes the database)
+
+name: secrets-rls-reference
+
+services:
+  # ------------------------------------------------------------------
+  # PostgreSQL — schema, roles, RLS policies and seed data are created on first start
+  # from postgres/initdb/*.sql (in file-name order). To re-run them: down -v, then up.
+  # ------------------------------------------------------------------
+  postgres:
+    image: postgres:18
+    container_name: ref-postgres
+    ports:
+      - "5433:5432"              # 5433 on your machine (the learning lab uses 5432)
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres-dev-only   # LAB ONLY
+      POSTGRES_DB: supportdesk
+    volumes:
+      - refpgdata:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+      - ./postgres/demo:/demo:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d supportdesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ------------------------------------------------------------------
+  # PgBouncer — the API connects HERE (port 6432), never to Postgres directly.
+  # Transaction pooling + auth_query (see pgbouncer/pgbouncer.ini).
+  # ------------------------------------------------------------------
+  pgbouncer:
+    build: ./pgbouncer
+    container_name: ref-pgbouncer
+    ports:
+      - "6432:6432"
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ------------------------------------------------------------------
+  # pgAdmin for the reference database → http://localhost:5051
+  # (Postgres password: postgres-dev-only)
+  # ------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:9.18
+    container_name: ref-pgadmin
+    ports:
+      - "5051:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@secretslab.dev
+      PGADMIN_DEFAULT_PASSWORD: pgadmin-dev-only
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  refpgdata:

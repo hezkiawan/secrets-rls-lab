@@ -18,6 +18,9 @@ type Config struct {
 	Product      string // which product's secrets this API may read ("kouventa")
 	RoleIDFile   string // AppRole role ID  (like a username — not very secret)
 	SecretIDFile string // AppRole secret ID (like a password — "secret zero")
+
+	DBAddr string // where to reach Postgres: PgBouncer in the reference setup
+	DBName string // database name
 }
 
 // Load reads settings from environment variables, with defaults that match
@@ -32,6 +35,9 @@ func Load() Config {
 		Product:      getEnv("PRODUCT", "kouventa"),
 		RoleIDFile:   getEnv("OPENBAO_ROLE_ID_FILE", ".openbao/role_id"),
 		SecretIDFile: getEnv("OPENBAO_SECRET_ID_FILE", ".openbao/secret_id"),
+
+		DBAddr: getEnv("DB_ADDR", "127.0.0.1:6432"), // reference/ PgBouncer
+		DBName: getEnv("DB_NAME", "supportdesk"),
 	}
 }
 

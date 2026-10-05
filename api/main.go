@@ -1,8 +1,12 @@
 // Command api is the lab's Go + Fiber v3 service.
 //
-// M1: at startup it logs into OpenBao with AppRole and loads its secrets.
-// If it can't, it refuses to start ("fail fast"): an API without its secrets
-// is broken, and it's better to know immediately than at the first request.
+// Startup (fail fast — if anything is missing, refuse to start):
+//  1. log into OpenBao with AppRole                         (M1)
+//  2. load the app's secrets: JWT key, API tokens           (M1)
+//  3. load the database login from OpenBao, open the pool   (M3)
+//
+// Then it serves: health/status (M0–M1), the policy demo (M1),
+// and the conversations API protected by Row Level Security (M3), plus a tiny web page.
 package main
 
 import (
@@ -14,8 +18,11 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/healthcheck"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
+	"github.com/gofiber/fiber/v3/middleware/static"
 
+	"secrets-rls-lab/api/internal/auth"
 	"secrets-rls-lab/api/internal/config"
+	"secrets-rls-lab/api/internal/db"
 	"secrets-rls-lab/api/internal/openbao"
 )
 
@@ -23,8 +30,8 @@ func main() {
 	cfg := config.Load()
 	health := openbao.NewHealthChecker(cfg.OpenBaoAddr, 2*time.Second)
 
-	// ---- Startup: log in and load secrets (before accepting any request) ----
-	startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// ---- Startup ---------------------------------------------------------------------
+	startupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	bao, err := openbao.NewClient(cfg.OpenBaoAddr, cfg.KVMount)
@@ -39,22 +46,62 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("Logged into OpenBao with AppRole and loaded %d secrets for %q", len(secrets.Fingerprints()), cfg.Product)
-	// Note: we never log secret VALUES. Fingerprints only.
 
-	// ---- HTTP server ----
-	app := fiber.New(fiber.Config{AppName: "secrets-rls-lab API (M1)"})
+	// M3: the runtime DB login lives in OpenBao too — never in a config file.
+	runtimeLogin, err := bao.LoadDBLogin(startupCtx, cfg.Product+"/db")
+	if err != nil {
+		log.Fatalf("%v\n\nHint: run  docker compose run --rm bootstrap /bootstrap/m3-setup.sh", err)
+	}
+	pool, err := db.Open(startupCtx, cfg.DBAddr, cfg.DBName, runtimeLogin.Username, runtimeLogin.Password)
+	if err != nil {
+		log.Fatalf("%v\n\nHint: is the reference stack running?  docker compose -f reference/docker-compose.yml up -d", err)
+	}
+	defer pool.Close()
+	log.Printf("Connected to Postgres at %s as %q (via PgBouncer)", cfg.DBAddr, runtimeLogin.Username)
+
+	// LAB ONLY: a second pool as the table OWNER, to demonstrate the "owner bypasses RLS"
+	// trap. A real app must never hold the owner's credentials.
+	ownerLogin, err := bao.LoadDBLogin(startupCtx, cfg.Product+"/db-owner")
+	if err != nil {
+		log.Fatal(err)
+	}
+	ownerPool, err := db.Open(startupCtx, cfg.DBAddr, cfg.DBName, ownerLogin.Username, ownerLogin.Password)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ownerPool.Close()
+
+	tokens := auth.NewIssuer(secrets.JWTSigningKey())
+
+	// ---- HTTP server -------------------------------------------------------------------
+	app := fiber.New(fiber.Config{AppName: "secrets-rls-lab API (M3)"})
 	app.Use(recoverer.New())
 	app.Use(logger.New())
 
-	app.Get(healthcheck.LivenessEndpoint, healthcheck.New())                   // GET /livez
-	app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{ // GET /readyz
+	app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
+	app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
 		Probe: func(c fiber.Ctx) bool {
-			_, err := health.Check(c.Context())
-			return err == nil
+			if _, err := health.Check(c.Context()); err != nil {
+				return false
+			}
+			return pool.Ping(c.Context()) == nil
 		},
 	}))
 
-	// GET /status — what the API knows about itself (no secret values!)
+	registerM1Routes(app, cfg, health, bao, secrets)
+	registerConversationRoutes(app, pool, ownerPool, tokens)
+
+	// The tiny demo page (api/web/index.html) at http://localhost:3000/
+	app.Get("/*", static.New("./web"))
+
+	log.Printf("API listening on http://localhost:%s  (env: %s, OpenBao: %s)", cfg.Port, cfg.AppEnv, cfg.OpenBaoAddr)
+	log.Fatal(app.Listen(":" + cfg.Port))
+}
+
+// registerM1Routes: what the API knows about itself, and the OpenBao policy demo.
+func registerM1Routes(app *fiber.App, cfg config.Config, health *openbao.HealthChecker,
+	bao *openbao.Client, secrets *openbao.AppSecrets) {
+
 	app.Get("/status", func(c fiber.Ctx) error {
 		h, err := health.Check(c.Context())
 		openbaoInfo := fiber.Map{"address": cfg.OpenBaoAddr, "ready": err == nil}
@@ -64,14 +111,12 @@ func main() {
 		if err != nil {
 			openbaoInfo["error"] = err.Error()
 		}
-
 		token, err := bao.LookupSelf(c.Context())
 		if err != nil {
 			openbaoInfo["token_error"] = err.Error()
 		} else {
 			openbaoInfo["token"] = token
 		}
-
 		return c.JSON(fiber.Map{
 			"api":         "ok",
 			"environment": cfg.AppEnv,
@@ -81,8 +126,6 @@ func main() {
 		})
 	})
 
-	// GET /demo/read?path=otherproduct/app — try to read ANY path with our token.
-	// Shows the policy in action: some paths allowed, others denied.
 	app.Get("/demo/read", func(c fiber.Ctx) error {
 		path := c.Query("path")
 		if path == "" {
@@ -92,15 +135,4 @@ func main() {
 		}
 		return c.JSON(bao.TryRead(c.Context(), path))
 	})
-
-	app.Get("/demo/list", func(c fiber.Ctx) error {
-		names, err := bao.ListSecrets(c.Context(), cfg.Product)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-		}
-		return c.JSON(fiber.Map{"product": cfg.Product, "secrets": names})
-	})
-
-	log.Printf("API listening on http://localhost:%s  (env: %s, OpenBao: %s)", cfg.Port, cfg.AppEnv, cfg.OpenBaoAddr)
-	log.Fatal(app.Listen(":" + cfg.Port))
 }

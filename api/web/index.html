@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conversation Desk · RLS demo</title>
+<style>
+  :root {
+    --bg: #f4f6f7; --panel: #ffffff; --ink: #17232b; --muted: #5b6b76; --line: #dbe2e6;
+    --accent: #0f7b6c; --accent-soft: #e2f3f0; --warn: #b4530a; --warn-soft: #fdf0e2;
+    --bad: #b42318; --bad-soft: #fde8e7; --good: #1f7a3a; --good-soft: #e5f4e9;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f171c; --panel: #16212a; --ink: #e4ecf0; --muted: #9fb1bc; --line: #26343e;
+      --accent: #4fc8b4; --accent-soft: #123530; --warn: #f2b06b; --warn-soft: #3a2914;
+      --bad: #f2877e; --bad-soft: #3b1715; --good: #7fd49a; --good-soft: #15301e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 18px; }
+  header h1 { margin: 0; font-size: 1.5rem; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  h2 { margin: 0 0 10px; font-size: 1.05rem; }
+  .users { display: flex; flex-wrap: wrap; gap: 16px; }
+  .company { display: grid; gap: 6px; }
+  .company small { color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: .72rem; }
+  .company .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+           border-radius: 8px; padding: 6px 12px; }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.user.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .role { font-size: .75rem; opacity: .8; }
+  .grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .who { display: grid; gap: 6px; }
+  .ctx { font-family: var(--mono); font-size: .8rem; background: var(--bg); border-radius: 8px; padding: 10px; white-space: pre-wrap; overflow-x: auto; }
+  .count { color: var(--muted); font-weight: 400; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .78rem; background: var(--bg); }
+  .co-acme { background: var(--accent-soft); color: var(--accent); }
+  .co-bumi { background: var(--warn-soft); color: var(--warn); }
+  select { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 3px 6px; }
+  .demos { display: grid; gap: 8px; }
+  .demos button { text-align: left; }
+  .demos button b { display: block; }
+  .demos button span { color: var(--muted); font-size: .85rem; }
+  .result { border-radius: 8px; padding: 10px 12px; font-size: .9rem; display: grid; gap: 6px; }
+  .result.ok { background: var(--good-soft); }
+  .result.bad { background: var(--bad-soft); }
+  .result.info { background: var(--bg); }
+  .result pre { margin: 0; font-family: var(--mono); font-size: .78rem; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; }
+  .empty { color: var(--muted); padding: 18px 8px; }
+  footer { color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Conversation Desk</h1>
+    <p>Row Level Security demo. The API's queries contain <strong>no</strong> company or user filter — Postgres decides which rows each person sees.</p>
+  </header>
+
+  <section class="panel">
+    <h2>1 · Log in as… <span class="count">(demo login, no password)</span></h2>
+    <div class="users" id="users">Loading users…</div>
+  </section>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>2 · Conversations <span class="count" id="count"></span></h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Company</th><th>Customer</th><th>Channel</th><th>Subject</th><th>Assigned</th><th>Status</th></tr></thead>
+          <tbody id="rows"><tr><td colspan="6" class="empty">Pick a user above.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside class="panel who">
+      <h2>What Postgres is told</h2>
+      <div class="ctx" id="ctx">Not logged in.</div>
+      <p class="count">Sent at the start of every request's transaction with <code>set_config(…, true)</code> = <code>SET LOCAL</code>. Gone at COMMIT.</p>
+    </aside>
+  </div>
+
+  <section class="panel">
+    <h2>3 · Try to break it</h2>
+    <div class="grid">
+      <div class="demos">
+        <button id="d-create"><b>Create a conversation in my company</b><span>Normal insert. Should work.</span></button>
+        <button id="d-spoof"><b>Create one in the OTHER company</b><span>Sends another company's ID. RLS WITH CHECK should block it.</span></button>
+        <button id="d-nocontext"><b>Query without saying who I am</b><span>The code "forgot" set_config. Should return zero rows, not all rows.</span></button>
+        <button id="d-owner"><b>Same query as the table OWNER</b><span>The trap: owners bypass RLS unless FORCE ROW LEVEL SECURITY is set.</span></button>
+      </div>
+      <div id="result" class="result info"><div>Results appear here.</div></div>
+    </div>
+  </section>
+
+  <footer>Endpoints used: <code>GET /demo/users</code> · <code>POST /login</code> · <code>GET /conversations</code> · <code>PATCH /conversations/:id</code> · <code>POST /conversations</code> · <code>GET /demo/no-context</code> · <code>GET /demo/as-owner</code></footer>
+</div>
+
+<script>
+let token = null, me = null, users = [];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function call(method, path, body) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = "Bearer " + token;
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  let data = null;
+  try { data = await res.json(); } catch { data = { error: "non-JSON response" }; }
+  return { status: res.status, data };
+}
+
+function companyClass(name) { return name && name.startsWith("Acme") ? "co-acme" : "co-bumi"; }
+
+async function loadUsers() {
+  const { data } = await call("GET", "/demo/users");
+  users = Array.isArray(data) ? data : [];
+  const byCompany = {};
+  users.forEach((u) => (byCompany[u.company] ||= []).push(u));
+  $("users").innerHTML = Object.entries(byCompany).map(([co, list]) => `
+    <div class="company"><small>${esc(co)}</small><div class="row">
+      ${list.map((u) => `<button class="user" data-email="${esc(u.email)}">${esc(u.name)} <span class="role">${esc(u.role)}</span></button>`).join("")}
+    </div></div>`).join("") || "No users — is the database running?";
+  document.querySelectorAll("button.user").forEach((b) => b.addEventListener("click", () => login(b.dataset.email)));
+}
+
+async function login(email) {
+  token = null;
+  const { status, data } = await call("POST", "/login", { email });
+  if (status !== 200) return show("bad", "Login failed", data);
+  token = data.token; me = data.user;
+  document.querySelectorAll("button.user").forEach((b) => b.classList.toggle("active", b.dataset.email === email));
+  $("ctx").textContent =
+    `-- ${me.name}, ${me.role} at ${me.company}\n` +
+    `app.company_id = '${me.company_id}'\n` +
+    `app.user_id    = '${me.user_id}'\n` +
+    `app.role       = '${me.role}'`;
+  show("info", `Logged in as ${me.name}`, { token_contains: { user: me.user_id, company: me.company_id, role: me.role } });
+  await loadRows();
+}
+
+async function loadRows() {
+  const { status, data } = await call("GET", "/conversations");
+  if (status !== 200) return show("bad", "Could not load conversations", data);
+  $("count").textContent = `(${data.count} visible to ${me.name})`;
+  const list = data.conversations || [];
+  $("rows").innerHTML = list.length ? list.map((c) => `
+    <tr>
+      <td><span class="pill ${companyClass(c.company)}">${esc(c.company)}</span></td>
+      <td>${esc(c.customer_name)}</td>
+      <td>${esc(c.channel)}</td>
+      <td>${esc(c.subject)}</td>
+      <td>${c.assigned_to ? esc(c.assigned_to) : '<span class="pill">unassigned</span>'}</td>
+      <td><select data-id="${esc(c.id)}" aria-label="Status for ${esc(c.customer_name)}">
+        ${["open", "pending", "closed"].map((s) => `<option ${s === c.status ? "selected" : ""}>${s}</option>`).join("")}
+      </select></td>
+    </tr>`).join("") : `<tr><td colspan="6" class="empty">No rows.</td></tr>`;
+  document.querySelectorAll("select[data-id]").forEach((s) => s.addEventListener("change", async () => {
+    const r = await call("PATCH", `/conversations/${s.dataset.id}`, { status: s.value });
+    show(r.status === 200 ? "ok" : "bad", r.status === 200 ? "Status updated" : "Update refused", r.data);
+    await loadRows();
+  }));
+}
+
+function show(kind, title, data) {
+  $("result").className = "result " + kind;
+  $("result").innerHTML = `<div><strong>${esc(title)}</strong></div>` +
+    (data && data.explanation ? `<div>${esc(data.explanation)}</div>` : "") +
+    `<pre>${esc(JSON.stringify(data, null, 2))}</pre>`;
+}
+
+function needLogin() { if (!token) { show("bad", "Log in first", { hint: "Pick a user in step 1." }); return true; } return false; }
+
+$("d-create").addEventListener("click", async () => {
+  if (needLogin()) return;
+  const r = await call("POST", "/conversations", { customer_name: "Demo Customer", channel: "whatsapp", subject: `Created by ${me.name}` });
+  show(r.status === 201 ? "ok" : "bad", r.status === 201 ? "Created in your own company" : "Refused", r.data);
+  await loadRows();
+});
+$("d-spoof").addEventListener("click", async () => {
+  if (needLogin()) return;
+  const other = users.find((u) => u.company_id !== me.company_id);
+  const r = await call("POST", "/conversations", { customer_name: "Spoofed", subject: "Should never exist", spoof_company_id: other.company_id });
+  show(r.status === 403 ? "ok" : "bad", r.status === 403 ? `Blocked: you can't write into ${other.company}` : "Unexpected!", r.data);
+});
+$("d-nocontext").addEventListener("click", async () => {
+  if (needLogin()) return;
+  const r = await call("GET", "/demo/no-context");
+  show(r.data.count === 0 ? "ok" : "bad", `No context → ${r.data.count} rows`, r.data);
+});
+$("d-owner").addEventListener("click", async () => {
+  if (needLogin()) return;
+  const r = await call("GET", "/demo/as-owner");
+  const companies = [...new Set((r.data.conversations || []).map((c) => c.company))];
+  const leak = companies.length > 1;
+  show(leak ? "bad" : "ok", leak ? `TRAP: the owner sees ${r.data.count} rows from ${companies.length} companies` : `Fixed: the owner sees only ${r.data.count} rows`, r.data);
+});
+
+loadUsers();
+</script>
+</body>
+</html>
