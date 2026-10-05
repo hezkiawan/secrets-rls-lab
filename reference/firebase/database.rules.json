@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "companies": {
+      "$companyId": {
+        "conversations": {
+          ".indexOn": ["assigned_to"],
+
+          ".read": "auth != null && auth.token.company_id === $companyId && (auth.token.role === 'supervisor' || (query.orderByChild === 'assigned_to' && query.equalTo === auth.uid))",
+
+          "$conversationId": {
+            ".read": "auth != null && auth.token.company_id === $companyId && (data.child('assigned_to').val() === auth.uid || !data.child('assigned_to').exists())",
+
+            ".write": "auth != null && auth.token.company_id === $companyId && newData.exists() && (auth.token.role === 'supervisor' || (data.child('assigned_to').val() === auth.uid && newData.child('assigned_to').val() === auth.uid && newData.child('customer_name').val() === data.child('customer_name').val() && newData.child('channel').val() === data.child('channel').val()) || (!data.exists() && !newData.child('assigned_to').exists()))",
+
+            ".validate": "newData.hasChildren(['customer_name', 'channel', 'status'])",
+
+            "status": {
+              ".validate": "newData.isString() && newData.val().matches(/^(open|pending|closed)$/)"
+            },
+            "assigned_to": { ".validate": "newData.isString()" },
+            "customer_name": { ".validate": "newData.isString() && newData.val().length > 0" },
+            "channel": { ".validate": "newData.isString() && newData.val().matches(/^(whatsapp|instagram|email|webchat)$/)" },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    }
+  }
+}

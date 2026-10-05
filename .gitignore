@@ -24,3 +24,7 @@ Thumbs.db
 reference/.secrets/
 reference/backups/
 api/.reference/
+
+# Firebase rules tests
+reference/firebase/node_modules/
+reference/firebase/*.log

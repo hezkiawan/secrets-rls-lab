@@ -1,0 +1,66 @@
+// firestore.rules — the M3 support-desk rules, written for Cloud Firestore.
+// Same cases as reference/postgres/initdb/03-rls.sql, for comparison. One difference: here agents
+// may change ONLY `status` (the Postgres version also lets an agent un-assign a conversation).
+//
+// Data:   companies/{companyId}/conversations/{conversationId}
+//           { customer_name, channel, status: open|pending|closed, assigned_to: uid | null }
+// Who:    Firebase Auth ID token with custom claims set by OUR backend (Admin SDK):
+//           { company_id: "...", role: "agent" | "supervisor" }
+//
+// IMPORTANT
+// - These rules protect CLIENT reads/writes (web + Flutter SDKs). The Admin SDK on the Go
+//   backend BYPASSES them: backend code must do its own checks.
+// - Rules are NOT filters: a query is refused entirely if it COULD return a document the user
+//   may not read. Agents must query  where("assigned_to", "==", uid)  (or == null).
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Helpers ("who is asking") — like support.current_company_id() in Postgres ----
+    function signedIn()            { return request.auth != null; }
+    function inCompany(companyId)  { return signedIn() && request.auth.token.company_id == companyId; }
+    function isSupervisor()        { return request.auth.token.role == 'supervisor'; }
+    function isMine(data)          { return data.assigned_to == request.auth.uid; }
+    function validStatus(s)        { return s in ['open', 'pending', 'closed']; }
+    function changedOnly(fields)   { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
+
+    match /companies/{companyId}/conversations/{conversationId} {
+
+      // READ — tenant isolation AND (supervisor OR mine OR unassigned)
+      // (= RESTRICTIVE tenant_isolation + PERMISSIVE agent_read / supervisor_read)
+      allow read: if inCompany(companyId)
+                  && (isSupervisor() || isMine(resource.data) || resource.data.assigned_to == null);
+
+      // CREATE — only inside your own company (= WITH CHECK), with a valid shape.
+      // The company is the path segment, so a user cannot "spoof" another company.
+      // Agents may only create conversations that are unassigned or assigned to themselves.
+      allow create: if inCompany(companyId)
+                    && request.resource.data.keys().hasOnly(['customer_name', 'channel', 'status', 'assigned_to'])
+                    && request.resource.data.keys().hasAll(['customer_name', 'channel', 'status', 'assigned_to'])
+                    && request.resource.data.customer_name is string
+                    && request.resource.data.channel in ['whatsapp', 'instagram', 'email', 'webchat']
+                    && validStatus(request.resource.data.status)
+                    && (isSupervisor() || request.resource.data.assigned_to == null
+                        || request.resource.data.assigned_to == request.auth.uid);
+
+      // UPDATE — agents: their own conversations; supervisors: any in the company.
+      //   resource          = the document as stored now   (≈ USING)
+      //   request.resource  = the document after the write  (≈ WITH CHECK)
+      // Agents may only change `status`; supervisors may also (re)assign.
+      allow update: if inCompany(companyId)
+                    && (isSupervisor() || isMine(resource.data))
+                    && validStatus(request.resource.data.status)
+                    && (changedOnly(['status'])
+                        || (isSupervisor() && changedOnly(['status', 'assigned_to'])));
+
+      // DELETE — nobody from the client (only the backend, via Admin SDK).
+      allow delete: if false;
+    }
+
+    // Everything else: denied (rules are deny-by-default, this just makes it explicit).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

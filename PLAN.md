@@ -4,7 +4,7 @@
 
 ## Deliverables
 1. **This lab repo** — `docker compose up` + a Go/Fiber API.
-2. **Research doc** — comparison, deployment guide, RLS guide, Firebase section, recommendation, rollout plan.
+2. **Research doc** ✅ — `docs/research-report.md`, `deployment-guide.md`, `rls-guide.md`, `firebase-guide.md`.
 3. **Slides + live demo.**
 
 ## Design choices
@@ -38,7 +38,7 @@ All scoping questions are answered.
 | M3 ✅ | **RLS through PgBouncer**: per-company, per-user, per-role; permissive vs restrictive; buggy query still safe; cross-tenant insert blocked; fail-safe when unset; **owner-bypass trap (= the team's current shared login) + fix: separate owner vs runtime role, `FORCE`** | policies, `USING`/`WITH CHECK`, `SET LOCAL`, pooler safety, indexes, safe rollout | middleware, transactions, `defer` |
 | M4-lite ✅ | *(smaller)* Same code + scripts against **HashiCorp Vault**; measure image size / idle memory | compatibility, migration risk | — |
 | M5 ✅ | **Production-like** (`reference/`): 3-node Raft cluster + HAProxy, **Transit auto-unseal** (the Tencent answer), init/configure as code, `.env` → KV import, **dynamic DB credentials through PgBouncer with automatic renewal/rotation**, kill leader (HA), full restart → auto-unseal, Raft snapshot backup/restore, declarative audit log | deployment operations, leases | goroutines, `LifetimeWatcher`, atomic pool swap |
-| M6 | *(optional)* Firebase emulator: Firestore + Realtime DB Rules vs Admin SDK | Firebase access control | — |
+| M6 ✅ (files) | Firebase: Firestore + Realtime DB Rules (`reference/firebase/`) + emulator tests, mapped to Postgres RLS (`docs/firebase-guide.md`) | Firebase access control | — |
 
 ## Research doc outline
 1. Summary + recommendation

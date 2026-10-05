@@ -7,7 +7,8 @@ Research lab for the production team: **secrets management (OpenBao vs HashiCorp
 | `docker-compose.yml`, `bootstrap/` | **Learning lab** (dev mode): OpenBao + Vault side by side, setup-as-code scripts for M1–M3 |
 | `reference/` | **Production-like reference stack**: PostgreSQL with RLS + PgBouncer (M3); 3-node OpenBao cluster + HAProxy, auto-unseal, dynamic DB credentials (M5). Walkthrough: [reference/README.md](reference/README.md) |
 | `api/` | Go + Fiber v3 API: AppRole login, secrets from OpenBao, RLS-protected conversations API, demo page |
-| `docs/` | Findings and notes: `comparison-findings.md`, `notes/m0…m5` |
+| `docs/` | **Start here:** [`research-report.md`](docs/research-report.md) (summary + recommendation), [`deployment-guide.md`](docs/deployment-guide.md), [`rls-guide.md`](docs/rls-guide.md), [`firebase-guide.md`](docs/firebase-guide.md), [`comparison-findings.md`](docs/comparison-findings.md), milestone notes in `notes/` |
+| `reference/firebase/` | Firestore + Realtime DB Security Rules for the same support desk, with emulator tests |
 
 See [PLAN.md](PLAN.md) for milestones.
 
