@@ -1,0 +1,20 @@
+# Go build output
+api/api
+api/api.exe
+*.exe
+
+# Local env files (we're trying to get rid of these!)
+.env
+.env.*
+
+# AppRole credentials written by the bootstrap ("secret zero") — never commit
+api/.openbao/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Backups / snapshots created in M5
+*.snap

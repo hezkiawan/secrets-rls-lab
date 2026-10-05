@@ -1,0 +1,100 @@
+# secrets-rls-lab — infrastructure for the lab
+# M0: OpenBao (dev mode) + PostgreSQL + pgAdmin
+#
+# Start:   docker compose up -d
+# Status:  docker compose ps
+# Stop:    docker compose down          (keeps Postgres data)
+# Reset:   docker compose down -v       (also deletes Postgres data)
+
+name: secrets-rls-lab
+
+services:
+  # ------------------------------------------------------------------
+  # OpenBao — the secrets manager.
+  # DEV MODE: in-memory storage, auto-unsealed, fixed root token, no TLS.
+  # Everything stored here is LOST when the container restarts.
+  # Never use dev mode outside a laptop. (M5 builds the production-like setup.)
+  # ------------------------------------------------------------------
+  openbao:
+    image: openbao/openbao:2.7.1
+    container_name: lab-openbao
+    ports:
+      - "8200:8200"              # API + web UI → http://localhost:8200
+    environment:
+      # The image's entrypoint turns these into -dev-root-token-id / -dev-listen-address.
+      BAO_DEV_ROOT_TOKEN_ID: root          # DEV ONLY: a guessable admin token
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200 # listen on all interfaces inside the container
+    cap_add:
+      - IPC_LOCK                 # lets OpenBao lock memory so secrets aren't swapped to disk
+    healthcheck:
+      test: ["CMD", "bao", "status", "-address=http://127.0.0.1:8200"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ------------------------------------------------------------------
+  # PostgreSQL — the database we'll protect with dynamic credentials (M2) and RLS (M3).
+  # The superuser password below is the "before" state we are going to fix:
+  # in M2 the API stops using it and gets short-lived users from OpenBao instead.
+  # ------------------------------------------------------------------
+  postgres:
+    image: postgres:18
+    container_name: lab-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres-dev-only
+      POSTGRES_DB: supportdesk
+    volumes:
+      # Postgres 18+ images keep data under /var/lib/postgresql (changed from .../data in 17).
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d supportdesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ------------------------------------------------------------------
+  # pgAdmin — GUI for Postgres (we'll use it to watch users and RLS policies).
+  # Desktop mode: no pgAdmin login screen (fine for a local lab only).
+  # ------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:9.18
+    container_name: lab-pgadmin
+    ports:
+      - "5050:80"                # → http://localhost:5050
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@secretslab.dev
+      PGADMIN_DEFAULT_PASSWORD: pgadmin-dev-only
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - ./infra/pgadmin/servers.json:/pgadmin4/servers.json:ro   # pre-registers our Postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ------------------------------------------------------------------
+  # bootstrap — one-shot "setup as code" for OpenBao (M1).
+  # Not started by `docker compose up` (profile "tools"). Run it with:
+  #   docker compose run --rm bootstrap
+  # Re-run after every OpenBao restart: dev mode forgets everything.
+  # ------------------------------------------------------------------
+  bootstrap:
+    image: openbao/openbao:2.7.1
+    profiles: ["tools"]
+    user: "0:0"                          # so it can write the role/secret ID files
+    entrypoint: ["/bin/sh", "/bootstrap/m1-setup.sh"]
+    environment:
+      BAO_ADDR: http://openbao:8200      # container-to-container: use the service name
+      BAO_TOKEN: root                    # admin token — DEV ONLY
+    volumes:
+      - ./bootstrap:/bootstrap:ro
+      - ./api/.openbao:/out              # role_id + secret_id land in api/.openbao/
+    depends_on:
+      openbao:
+        condition: service_healthy
+
+volumes:
+  pgdata:
