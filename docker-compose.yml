@@ -24,8 +24,7 @@ services:
       # The image's entrypoint turns these into -dev-root-token-id / -dev-listen-address.
       BAO_DEV_ROOT_TOKEN_ID: root          # DEV ONLY: a guessable admin token
       BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200 # listen on all interfaces inside the container
-    cap_add:
-      - IPC_LOCK                 # lets OpenBao lock memory so secrets aren't swapped to disk
+    # (no IPC_LOCK: OpenBao removed mlock — protect memory by disabling/encrypting swap on the host)
     healthcheck:
       test: ["CMD", "bao", "status", "-address=http://127.0.0.1:8200"]
       interval: 5s

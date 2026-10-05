@@ -3,11 +3,12 @@
 # In real life each service here is its own VM (or managed service). The config files
 # mounted below are the same files you'd put on those VMs. See docs/deployment-guide.md.
 #
-# M3 (now):  PostgreSQL with RLS  +  PgBouncer (transaction pooling)
-# M5 (next): 3-node OpenBao cluster (Raft) + HAProxy load balancer
+# M3: PostgreSQL with RLS  +  PgBouncer (transaction pooling)
+# M5: 3-node OpenBao cluster (Raft, transit auto-unseal) + HAProxy load balancer
 #
 # Start:   docker compose -f reference/docker-compose.yml up -d --build
-# Reset:   docker compose -f reference/docker-compose.yml down -v   (deletes the database)
+# Reset:   docker compose -f reference/docker-compose.yml down -v   (deletes ALL data)
+# Full walkthrough: reference/README.md
 
 name: secrets-rls-reference
 
@@ -71,5 +72,114 @@ services:
       postgres:
         condition: service_healthy
 
+  # ==================================================================
+  # M5 — OpenBao cluster
+  # ==================================================================
+
+  # The "unsealer": a small separate OpenBao whose transit engine holds the key that
+  # unlocks the main cluster (auto-unseal). Persistent, and unseals itself with a static
+  # key, so it survives restarts. PRODUCTION: a hardened OpenBao on its own VM (or a KMS/HSM).
+  unsealer:
+    image: openbao/openbao:2.7.1
+    container_name: ref-unsealer
+    entrypoint: ["bao", "server", "-config=/openbao/config/unsealer.hcl"]
+    ports:
+      - "8220:8200"
+    environment:
+      UNSEALER_STATIC_KEY: "bGFiLW9ubHktc3RhdGljLWtleS0zMi1ieXRlcyEhISE="   # LAB ONLY (32 bytes, base64)
+    volumes:
+      - ./unsealer/unsealer.hcl:/openbao/config/unsealer.hcl:ro
+      - unsealerdata:/openbao/file
+    healthcheck:
+      # healthy as soon as it answers, even before its first init
+      test: ["CMD-SHELL", "wget -q -O /dev/null 'http://127.0.0.1:8200/v1/sys/health?uninitcode=200' || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  unsealer-setup:
+    image: openbao/openbao:2.7.1
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/unsealer/setup.sh"]
+    environment:
+      BAO_ADDR: http://unsealer:8200
+      UNSEAL_TOKEN: lab-transit-unseal-token        # LAB ONLY fixed token ID
+    volumes:
+      - ./unsealer:/unsealer:ro
+      - ./.secrets:/secrets                         # unsealer-init.json (LAB ONLY)
+    depends_on:
+      unsealer:
+        condition: service_healthy
+
+  # Three OpenBao nodes = three VMs in production. Same image, different config file.
+  bao-1: &bao-node
+    image: openbao/openbao:2.7.1
+    container_name: ref-bao-1
+    entrypoint: ["bao", "server", "-config=/openbao/config/bao.hcl"]
+    environment:
+      BAO_TOKEN: lab-transit-unseal-token          # used by the transit seal (docs: use env, not the file)
+    ports:
+      - "8201:8200"                                 # direct access to this node (debugging)
+    volumes:
+      - ./openbao/bao-1.hcl:/openbao/config/bao.hcl:ro
+      - bao1data:/openbao/file
+    depends_on:
+      unsealer-setup:
+        condition: service_completed_successfully
+
+  bao-2:
+    <<: *bao-node
+    container_name: ref-bao-2
+    ports:
+      - "8202:8200"
+    volumes:
+      - ./openbao/bao-2.hcl:/openbao/config/bao.hcl:ro
+      - bao2data:/openbao/file
+
+  bao-3:
+    <<: *bao-node
+    container_name: ref-bao-3
+    ports:
+      - "8203:8200"
+    volumes:
+      - ./openbao/bao-3.hcl:/openbao/config/bao.hcl:ro
+      - bao3data:/openbao/file
+
+  # The ONE address apps use: http://localhost:8300 → always the active node.
+  haproxy:
+    image: haproxy:3.4.6-alpine
+    container_name: ref-haproxy
+    ports:
+      - "8300:8300"   # OpenBao (API + UI) via the load balancer
+      - "8404:8404"   # HAProxy status page
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - bao-1
+      - bao-2
+      - bao-3
+
+  # Admin toolbox: runs the scripts in ./scripts (init, configure, import-env, snapshot).
+  #   docker compose -f reference/docker-compose.yml run --rm tools /scripts/init.sh
+  tools:
+    image: openbao/openbao:2.7.1
+    profiles: ["tools"]
+    user: "0:0"
+    entrypoint: ["/bin/sh"]
+    environment:
+      BAO_ADDR: http://haproxy:8300
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./openbao/policies:/policies:ro
+      - ../bootstrap:/bootstrap:ro      # reuses the fake Firebase key file
+      - ./scripts:/env:ro               # example.env for the import demo
+      - ./.secrets:/secrets             # init.json (LAB ONLY, git-ignored)
+      - ./backups:/backups              # Raft snapshots (git-ignored)
+      - ../api/.reference:/out          # the API's role_id + secret_id (git-ignored)
+
 volumes:
   refpgdata:
+  bao1data:
+  bao2data:
+  bao3data:
+  unsealerdata:

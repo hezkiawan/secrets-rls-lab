@@ -13,14 +13,18 @@ import (
 	"strings"
 	"time"
 
-	bao "github.com/openbao/openbao/api/v2"
 	"github.com/openbao/openbao/api/auth/approle/v2"
+	bao "github.com/openbao/openbao/api/v2"
 )
 
 // Client is our small wrapper around the official client.
 type Client struct {
 	api     *bao.Client
 	kvMount string
+
+	// remembered so the client can log in again when its token can't be renewed (M5)
+	roleIDFile, secretIDFile string
+	authSecret               *bao.Secret
 }
 
 // NewClient creates an (unauthenticated) client for the given address.
@@ -61,6 +65,7 @@ func (c *Client) LoginAppRole(ctx context.Context, roleIDFile, secretIDFile stri
 	if secret == nil || secret.Auth == nil {
 		return errors.New("AppRole login returned no token")
 	}
+	c.roleIDFile, c.secretIDFile, c.authSecret = roleIDFile, secretIDFile, secret
 	return nil
 }
 
@@ -103,8 +108,8 @@ func (s *AppSecrets) JWTSigningKey() string { return s.jwtSigningKey }
 // value was loaded (and to notice when it changes) without ever revealing it.
 func (s *AppSecrets) Fingerprints() map[string]string {
 	return map[string]string{
-		"jwt_signing_key":         fingerprint(s.jwtSigningKey),
-		"meta_api_token":          fingerprint(s.metaAPIToken),
+		"jwt_signing_key":          fingerprint(s.jwtSigningKey),
+		"meta_api_token":           fingerprint(s.metaAPIToken),
 		"firebase_service_account": fingerprint(s.firebaseServiceAccount),
 	}
 }

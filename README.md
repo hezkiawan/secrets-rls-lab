@@ -5,9 +5,9 @@ Research lab for the production team: **secrets management (OpenBao vs HashiCorp
 | Folder | What it is |
 |---|---|
 | `docker-compose.yml`, `bootstrap/` | **Learning lab** (dev mode): OpenBao + Vault side by side, setup-as-code scripts for M1–M3 |
-| `reference/` | **Production-like reference stack**: PostgreSQL with RLS + PgBouncer (M3); OpenBao cluster + HAProxy (M5, next) |
+| `reference/` | **Production-like reference stack**: PostgreSQL with RLS + PgBouncer (M3); 3-node OpenBao cluster + HAProxy, auto-unseal, dynamic DB credentials (M5). Walkthrough: [reference/README.md](reference/README.md) |
 | `api/` | Go + Fiber v3 API: AppRole login, secrets from OpenBao, RLS-protected conversations API, demo page |
-| `docs/` | Findings and notes: `comparison-findings.md`, `notes/m0…m3` |
+| `docs/` | Findings and notes: `comparison-findings.md`, `notes/m0…m5` |
 
 See [PLAN.md](PLAN.md) for milestones.
 
@@ -42,9 +42,11 @@ Open **http://localhost:3000/** — the Conversation Desk demo page.
 | http://localhost:8200 / :8210 | OpenBao / Vault UI (token `root`) |
 | http://localhost:5050 / :5051 | pgAdmin: learning lab / reference database |
 
+**Production-like cluster with dynamic DB credentials (M5):** see [reference/README.md](reference/README.md).
+
 Optional comparison (M4): `docker compose --profile vault up -d vault`, then `docker compose run --rm bootstrap-vault`.
 
 ## Versions (checked 2026-10-05)
-OpenBao 2.7.1 · Vault 2.1.1 · PostgreSQL 18 · PgBouncer 1.24 (Alpine) · pgAdmin 9.18 · Fiber v3.5.0 · pgx v5.11 · golang-jwt v5.3
+OpenBao 2.7.1 · Vault 2.1.1 · HAProxy 3.4 · PostgreSQL 18 · PgBouncer 1.24 (Alpine) · pgAdmin 9.18 · Fiber v3.5.0 · pgx v5.11 · golang-jwt v5.3
 
 > ⚠️ Dev-only passwords and OpenBao dev mode throughout. This is a lab, not a deployment template. Production guidance lives in `docs/`.

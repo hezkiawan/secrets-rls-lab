@@ -24,13 +24,24 @@ Why it works: OpenBao is a fork of Vault 1.14 and kept the same HTTP API, paths,
 | **Image size**, content / on disk | **80.4 MB / 275 MB** | 188 MB / 740 MB (≈2.3× larger) |
 | **Idle memory** (dev mode, `docker stats`) | 33.7 MiB | 37.1 MiB |
 | **Idle CPU** | 1.71% | 0.75% |
-| Container capability | Compose file adds `IPC_LOCK` | Not needed (Vault 2.0.2+ images dropped it) |
+| Container capability | Not needed — OpenBao **removed mlock**; 2.7 refuses to start if config still says `disable_mlock` | Not needed (Vault 2.0.2+ images dropped it) |
 
 ## How to read these numbers
 
 - **Relative, not for sizing.** Dev mode, in memory, almost no data, no traffic. Production sizing comes from official guidance (see the research doc): e.g. HashiCorp's "small" cluster is 2–4 cores, 8–16 GB RAM per node, 3–5 nodes.
 - Idle memory and CPU are effectively **the same**; the CPU difference is noise from a single snapshot.
 - The image-size difference is real: a smaller download for OpenBao.
+
+## OpenBao 2.7 differences we hit while building M5 (production mode)
+
+Old Vault tutorials don't mention these. Sources: the [2.7 release notes](https://openbao.org/community/release-notes/2-7-0/) and the error messages we got when we tried the old way.
+
+| Change | What it means for us |
+|---|---|
+| **`file` storage backend removed** | Use Raft (integrated storage). Our single-node unsealer runs Raft too. |
+| **Audit devices are declared in the config file** (`audit "file" … {}`); `bao audit enable` via the API is refused | Audit logging lives in each node's HCL, so it is versioned with the config |
+| **mlock removed** ([RFC](https://openbao.org/community/rfcs/mlock-removal/)) | No `IPC_LOCK`, no `disable_mlock`. Harden by disabling or encrypting swap on the VM |
+| **PKCS#11 (HSM) and cloud-KMS seals moved to external plugins** | Transit auto-unseal (what we use) is still built in. HSM or KMS unseal needs an extra plugin install |
 
 ## Takeaway for the team
 

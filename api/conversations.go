@@ -15,12 +15,12 @@ import (
 	"secrets-rls-lab/api/internal/db"
 )
 
-func registerConversationRoutes(app *fiber.App, pool, ownerPool *pgxpool.Pool, tokens *auth.Issuer) {
+func registerConversationRoutes(app *fiber.App, pools db.PoolSource, ownerPool *pgxpool.Pool, tokens *auth.Issuer) {
 	// ---- Demo login (no password — DEMO ONLY) ---------------------------------------
 
 	// GET /demo/users — the seeded users, for the login dropdown.
 	app.Get("/demo/users", func(c fiber.Ctx) error {
-		users, err := db.ListUsers(c.Context(), pool)
+		users, err := db.ListUsers(c.Context(), pools.Current())
 		if err != nil {
 			return serverError(c, err)
 		}
@@ -35,7 +35,7 @@ func registerConversationRoutes(app *fiber.App, pool, ownerPool *pgxpool.Pool, t
 		if err := c.Bind().Body(&req); err != nil || req.Email == "" {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": `send {"email": "..."}`})
 		}
-		user, err := db.FindUserByEmail(c.Context(), pool, req.Email)
+		user, err := db.FindUserByEmail(c.Context(), pools.Current(), req.Email)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unknown user"})
 		}
@@ -61,7 +61,7 @@ func registerConversationRoutes(app *fiber.App, pool, ownerPool *pgxpool.Pool, t
 	// GET /conversations — the query has NO "WHERE company_id = ...". RLS filters it.
 	app.Get("/conversations", requireLogin, func(c fiber.Ctx) error {
 		var list []db.Conversation
-		err := db.WithTenant(c.Context(), pool, auth.WhoFrom(c), func(tx pgx.Tx) error {
+		err := db.WithTenant(c.Context(), pools.Current(), auth.WhoFrom(c), func(tx pgx.Tx) error {
 			var err error
 			list, err = db.ListConversations(c.Context(), tx)
 			return err
@@ -81,7 +81,7 @@ func registerConversationRoutes(app *fiber.App, pool, ownerPool *pgxpool.Pool, t
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": `send {"status": "open|pending|closed"}`})
 		}
 		var changed int64
-		err := db.WithTenant(c.Context(), pool, auth.WhoFrom(c), func(tx pgx.Tx) error {
+		err := db.WithTenant(c.Context(), pools.Current(), auth.WhoFrom(c), func(tx pgx.Tx) error {
 			var err error
 			changed, err = db.UpdateStatus(c.Context(), tx, c.Params("id"), req.Status)
 			return err
@@ -118,7 +118,7 @@ func registerConversationRoutes(app *fiber.App, pool, ownerPool *pgxpool.Pool, t
 		if req.SpoofCompanyID != "" {
 			companyID = req.SpoofCompanyID
 		}
-		err := db.WithTenant(c.Context(), pool, who, func(tx pgx.Tx) error {
+		err := db.WithTenant(c.Context(), pools.Current(), who, func(tx pgx.Tx) error {
 			return db.CreateConversation(c.Context(), tx, companyID, req.CustomerName, req.Channel, req.Subject)
 		})
 		if db.IsRLSViolation(err) {
@@ -138,7 +138,7 @@ func registerConversationRoutes(app *fiber.App, pool, ownerPool *pgxpool.Pool, t
 	// GET /demo/no-context — the same query, but the code "forgot" to say who is asking.
 	app.Get("/demo/no-context", requireLogin, func(c fiber.Ctx) error {
 		var list []db.Conversation
-		err := pgx.BeginTxFunc(c.Context(), pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		err := pgx.BeginTxFunc(c.Context(), pools.Current(), pgx.TxOptions{}, func(tx pgx.Tx) error {
 			var err error
 			list, err = db.ListConversations(c.Context(), tx) // no set_config → no context
 			return err

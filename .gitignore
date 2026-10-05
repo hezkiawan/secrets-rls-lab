@@ -19,3 +19,8 @@ Thumbs.db
 
 # Backups / snapshots created in M5
 *.snap
+
+# Reference stack secrets / backups (LAB ONLY)
+reference/.secrets/
+reference/backups/
+api/.reference/
