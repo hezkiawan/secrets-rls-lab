@@ -6,23 +6,24 @@
 # Run from the project root:   docker compose run --rm bootstrap /bootstrap/m2-setup.sh
 # Commands follow the OpenBao docs: Secrets engines → Databases → PostgreSQL (v2.7.x).
 set -eu
+CLI="${CLI:-bao}"   # "bao" for OpenBao, "vault" for HashiCorp Vault — same commands
 
-echo "== M2 bootstrap → $BAO_ADDR"
+echo "== M2 bootstrap using: $CLI"
 
 # --- 1. Turn on the database secrets engine (once) -----------------------------
-if ! bao secrets list -format=json | grep -q '"database/"'; then
+if ! $CLI secrets list -format=json | grep -q '"database/"'; then
   echo "-- enabling database secrets engine"
-  bao secrets enable database
+  $CLI secrets enable database
 fi
 
 # --- 2. Tell OpenBao how to reach Postgres, and with which admin login ----------
 # {{username}} / {{password}} are filled in by OpenBao from the two fields below.
 # "postgres" is the hostname of the Postgres container on the Docker network.
 # LAB ONLY: we hand OpenBao the superuser. In production you give it a dedicated
-# admin role and then run `bao write -f database/rotate-root/supportdesk`, so that
+# admin role and then run `$CLI write -f database/rotate-root/supportdesk`, so that
 # afterwards ONLY OpenBao knows that password (we skip it here: pgAdmin uses it).
 echo "-- configuring connection supportdesk"
-bao write database/config/supportdesk \
+$CLI write database/config/supportdesk \
   plugin_name="postgresql-database-plugin" \
   allowed_roles="kouventa-app" \
   connection_url="postgresql://{{username}}:{{password}}@postgres:5432/supportdesk?sslmode=disable" \
@@ -36,7 +37,7 @@ bao write database/config/supportdesk \
 # when the lease ends, OpenBao also revokes the privileges and DROPs the user.
 # default_ttl 2m / max_ttl 10m are short on purpose so you can watch it expire.
 echo "-- writing role kouventa-app"
-bao write database/roles/kouventa-app \
+$CLI write database/roles/kouventa-app \
   db_name="supportdesk" \
   creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; GRANT CONNECT ON DATABASE supportdesk TO \"{{name}}\"; GRANT USAGE ON SCHEMA public TO \"{{name}}\";" \
   default_ttl="2m" \
@@ -44,6 +45,6 @@ bao write database/roles/kouventa-app \
 
 # --- 4. Re-apply the app policy (it now also allows database/creds/kouventa-app) --
 echo "-- updating policy kouventa-app"
-bao policy write kouventa-app /bootstrap/policies/kouventa-app.hcl
+$CLI policy write kouventa-app /bootstrap/policies/kouventa-app.hcl
 
 echo "== done. Get a credential:  read database/creds/kouventa-app  (UI console)"

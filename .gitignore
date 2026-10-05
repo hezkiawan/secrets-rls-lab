@@ -9,6 +9,7 @@ api/api.exe
 
 # AppRole credentials written by the bootstrap ("secret zero") — never commit
 api/.openbao/
+api/.vault/
 
 # Editors / OS
 .vscode/
