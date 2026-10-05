@@ -85,7 +85,8 @@ services:
     image: openbao/openbao:2.7.1
     profiles: ["tools"]
     user: "0:0"                          # so it can write the role/secret ID files
-    entrypoint: ["/bin/sh", "/bootstrap/m1-setup.sh"]
+    entrypoint: ["/bin/sh"]
+    command: ["/bootstrap/m1-setup.sh"]
     environment:
       BAO_ADDR: http://openbao:8200      # container-to-container: use the service name
       BAO_TOKEN: root                    # admin token — DEV ONLY

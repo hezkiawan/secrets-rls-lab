@@ -25,6 +25,12 @@ path "secret/data/kouventa/admin/*" {
   capabilities = ["deny"]
 }
 
+# 4. (M2) Get short-lived Postgres credentials for the Kouventa role — and nothing
+#    else under database/ (not the connection config, not other roles).
+path "database/creds/kouventa-app" {
+  capabilities = ["read"]
+}
+
 # Not listed = not allowed:
 #   - secret/data/otherproduct/*     (another product's secrets)
 #   - writing/deleting anything      (the app is read-only)
