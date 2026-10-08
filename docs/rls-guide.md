@@ -1,7 +1,7 @@
 # Row Level Security (RLS) in PostgreSQL — guide
 
 **Who this is for:** the production team. It covers what RLS can do, how to write it, the traps, and how to roll it out on a live product.
-**Working example:** `reference/postgres/initdb/03-rls.sql` + `api/internal/db/db.go` (milestone M3, tested through PgBouncer).
+**Working example:** `reference/postgres/initdb/03-rls.sql` + `api/database/tenant.go` + `api/repository/conversation_repository.go` (milestone M3, tested through PgBouncer).
 **Sources:** PostgreSQL 18 docs ([Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html), [CREATE POLICY](https://www.postgresql.org/docs/current/sql-createpolicy.html)), [PgBouncer docs](https://www.pgbouncer.org/features.html). Checked 2026-10-06. RLS exists since PostgreSQL 9.5, and the current version is 18.
 
 ---
@@ -115,16 +115,22 @@ Policies need to know the current user, company and role. Options:
 - PgBouncer in **transaction pooling** gives your connection to someone else after each transaction. PgBouncer lists plain `SET` as **never compatible** with transaction pooling, because the value would stay on the connection and leak to the next client.
 - We verified this: after `COMMIT`, the same pooled connection had no context → 0 rows.
 
-The Go side (`api/internal/db/db.go`):
+The Go side (`api/database/tenant.go`). Every RLS query runs inside one transaction that starts like this:
 
 ```go
-pgx.BeginTxFunc(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-    tx.Exec(ctx, `SELECT set_config('app.company_id', $1, true),
-                         set_config('app.user_id',    $2, true),
-                         set_config('app.role',       $3, true)`, companyID, userID, role)
-    return fn(tx) // every query of this request runs inside this transaction
-})
+func BeginWithTenant(pool *pgxpool.Pool, user models.User) (pgx.Tx, error) {
+    tx, err := pool.Begin(ctx)                       // 1. start a transaction
+    ...
+    _, err = tx.Exec(ctx, `SELECT set_config('app.company_id', $1, true),
+                                  set_config('app.user_id',    $2, true),
+                                  set_config('app.role',       $3, true)`,
+        user.CompanyID, user.ID, user.Role)          // 2. "who is asking", local to this transaction
+    ...
+    return tx, nil                                   // 3. the repository runs its queries on tx, then commits
+}
 ```
+
+The repository (`api/repository/conversation_repository.go`) uses it: `BeginWithTenant` → plain `SELECT … FROM conversations` (no `WHERE company_id`, RLS adds it) → `Commit`.
 
 The values must come from the **verified login** (JWT), never from the request body.
 

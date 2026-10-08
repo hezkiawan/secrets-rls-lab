@@ -23,7 +23,7 @@
 |---|---|
 | Vault or OpenBao? | **OpenBao.** Same API and tooling, truly open source (MPL 2.0). Features Vault charges for are free: **namespaces**, standby reads, control groups. Vault's licence (BSL) allows our internal use, but it isn't open source and is now owned by IBM |
 | Can it run on our VMs? | Yes. *Tested:* 3-node cluster + load balancer survived node loss and full restarts, with automatic unsealing |
-| Tencent-specific issue? | Neither product can auto-unseal with **Tencent KMS**. Solution: **transit auto-unseal** (a small second OpenBao), built in and *tested* |
+| Tencent-specific issue? | Tencent sells a KMS, but **neither product has a seal for it**, so it can't auto-unseal OpenBao/Vault. Solution: **transit auto-unseal** (a small second OpenBao), built in and *tested* |
 | Can `.env` files go away? | Yes. *Tested:* `.env` → KV import; the API loads every secret from OpenBao at startup |
 | Dynamic DB credentials? | Yes, including through **PgBouncer** (needs `auth_query`). *Tested:* temporary users rotated automatically with no failed requests |
 | Resources? | Small. Idle ~34 MiB in the lab. Official guidance for "small" production nodes is 2–4 cores / 8–16 GB / 3,000+ IOPS |
@@ -150,7 +150,7 @@ The same scripts and the same Go code ran against both. Only the environment var
 Go API ──(1) login: role_id + secret_id──► auth/approle/login ──► token (policies, TTL)
        ──(2) GET /v1/secret/data/kouventa/app  + token ──► policy check ──► value or 403
        ──(3) GET /v1/database/creds/kouventa-app ──► OpenBao runs CREATE ROLE in Postgres ──► user + password + lease
-       ──(4) renew token / lease … at max TTL: log in again / get new DB user
+       ──(4) renew token (periodic, forever) and DB lease … at the lease's max TTL: get a new DB user
 every request ──► audit log
 ```
 
@@ -219,8 +219,8 @@ Official client: `github.com/openbao/openbao/api/v2` (+ `api/auth/approle/v2`). 
 | Log in | `approle.NewAppRoleAuth` + `client.Auth().Login` | Startup (fail fast) |
 | Read secrets | `client.KVv2("secret").Get(ctx, "kouventa/app")` | Startup |
 | DB user | `client.Logical().Read("database/creds/kouventa-app")` → open `pgxpool` | Startup + on rotation |
-| Stay alive | `LifetimeWatcher` renews token and lease; at max TTL: re-login / new DB user, **swap the pool atomically** | Background goroutines |
-| Never log secrets | Unexported struct fields; `/status` shows only SHA-256 fingerprints | Always |
+| Stay alive | Two background jobs (`api/background.go`) renew the **periodic** token and the DB lease every 30 s; near the lease's max TTL: new DB user, new pool, swap it in. A DB user is revoked when its token expires, hence the periodic token | Background goroutines |
+| Never log secrets | Logs and `/status` show usernames and node addresses, never passwords or keys | Always |
 
 ---
 

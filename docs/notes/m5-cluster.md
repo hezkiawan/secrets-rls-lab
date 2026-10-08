@@ -26,7 +26,7 @@
 ## How the API keeps working forever (`api/internal/openbao/lifecycle.go`)
 
 ```
-login (AppRole) ─► token ─► renew … renew … max TTL ─► login again
+login (AppRole) ─► periodic token ─► renew … renew … (forever; log in again only if the token was lost)
 get DB creds ─► open pool ─► renew lease … max TTL ─► get NEW creds ─► new pool ─► swap ─► old pool closes
 ```
 - `KeepLoggedIn` and `WatchLease` use the official client's `LifetimeWatcher`.
@@ -39,6 +39,9 @@ get DB creds ─► open pool ─► renew lease … max TTL ─► get NEW cred
 - Killed node restarted, rejoined and unsealed itself.
 - Snapshot save + restore worked.
 - Full restart of everything: data intact, auto-unsealed; **leader election took ~15 s** (HAProxy returns 503 until then).
+
+## Surprises
+- **A dynamic DB user dies with the token that requested it** (tested). With a max-TTL token, the re-login every few minutes revoked the API's fresh DB user about 30s later. Fix: a **periodic** AppRole token (`token_period`, no max TTL).
 
 ## Surprises (OpenBao 2.7)
 - `file` storage removed → Raft for everything.

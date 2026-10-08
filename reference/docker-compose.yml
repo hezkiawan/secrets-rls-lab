@@ -119,7 +119,7 @@ services:
     environment:
       BAO_TOKEN: lab-transit-unseal-token          # used by the transit seal (docs: use env, not the file)
     ports:
-      - "8201:8200"                                 # direct access to this node (debugging)
+      - "8201:8200"                        # direct access to this node (debugging)
     volumes:
       - ./openbao/bao-1.hcl:/openbao/config/bao.hcl:ro
       - bao1data:/openbao/file

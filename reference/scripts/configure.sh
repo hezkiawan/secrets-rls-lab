@@ -36,9 +36,12 @@ bao policy write kouventa-app /policies/kouventa-app.hcl
 if ! bao auth list -format=json | grep -q '"approle/"'; then
   bao auth enable approle
 fi
-# Short TTLs so you can WATCH the API renew and re-login. Production: e.g. 1h / 24h.
+# PERIODIC token: renewable forever, as long as it's renewed within token_period. No max TTL.
+# Why: dynamic DB users are tied to the token that requested them. When that token expires,
+# OpenBao revokes them too (tested). A token with a max TTL would cut off the API's DB user at
+# every re-login. Short period so you can WATCH renewals. Production: e.g. token_period=1h.
 bao write auth/approle/role/kouventa-api \
-  token_policies="kouventa-app" token_ttl=2m token_max_ttl=6m \
+  token_policies="kouventa-app" token_period=2m token_ttl=0 token_max_ttl=0 \
   secret_id_ttl=24h secret_id_num_uses=0
 bao read  -field=role_id   auth/approle/role/kouventa-api/role-id   > /out/role_id
 bao write -f -field=secret_id auth/approle/role/kouventa-api/secret-id > /out/secret_id

@@ -9,7 +9,9 @@
 # PRODUCTION: give each recovery key to a different person (or use -recovery-pgp-keys),
 #             never store them together, never on the server.
 set -eu
-: "${BAO_ADDR:=http://bao-1:8200}"   # talk to ONE node directly: uninitialized nodes are not in the load balancer
+# Talk to ONE node directly, never the load balancer: an uninitialized cluster has no active
+# node, so HAProxy has nothing to route to (503). INIT_ADDR overrides the default.
+BAO_ADDR="${INIT_ADDR:-http://bao-1:8200}"
 export BAO_ADDR
 
 if bao status -format=json 2>/dev/null | grep -q '"initialized": true'; then

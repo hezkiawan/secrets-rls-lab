@@ -29,7 +29,7 @@ This folder is what the team can copy from. Each container here = **one VM in pr
 | 1. Deploy OpenBao on VMs | `openbao/bao-*.hcl`, `unsealer/`, `haproxy/` | Steps 1–2 |
 | 2. Move `.env` files into KV | `scripts/import-env.sh` | Step 3 |
 | 3. Dynamic DB credentials | `scripts/configure.sh` (database engine) | Step 4: API logs in as `v-approle-kouventa-…` |
-| 4. Renewal + high availability | `api/internal/openbao/lifecycle.go`, HAProxy | Steps 5–6 |
+| 4. Renewal + high availability | `api/background.go`, `api/database/database.go` (SetPool), HAProxy | Steps 5–6 |
 | Backup / restart safety | `scripts/snapshot.sh`, transit seal | Steps 7–8 |
 
 ## Run it (PowerShell, from the repo root)
@@ -75,26 +75,27 @@ Each `KEY=VALUE` line in [`scripts/example.env`](scripts/example.env) becomes on
 ### 4. Run the API with dynamic database credentials
 ```powershell
 cd api
-$env:OPENBAO_ADDR="http://127.0.0.1:8300"
-$env:OPENBAO_ROLE_ID_FILE=".reference/role_id"
-$env:OPENBAO_SECRET_ID_FILE=".reference/secret_id"
-$env:DB_CREDS="dynamic"
 go run .
 ```
+No env vars needed: the defaults in `api/config/config.go` point at this stack (OpenBao `127.0.0.1:8300`, PgBouncer `127.0.0.1:6432`, AppRole files in `api/.reference/`).
+
 Expected log:
 ```
-Logged into OpenBao with AppRole and loaded 3 secrets for "kouventa"
-[db] now using temporary user "v-approle-kouventa-…" (lease 120s)
-Connected to Postgres at 127.0.0.1:6432 as "v-approle-kouventa-…" (via PgBouncer, dynamic credentials)
+STEP 2: logged in to OpenBao at http://127.0.0.1:8300
+STEP 3: read secrets from secret/kouventa/app
+STEP 4: got temporary database user v-approle-kouventa-…
+STEP 5: connected to Postgres at 127.0.0.1:6432 as v-approle-kouventa-…
+STEP 6: background jobs started
+STEP 7: listening on http://localhost:3000
 ```
 - http://localhost:3000/ — the RLS demo still works, now through a user that didn't exist a minute ago.
-- http://localhost:3000/status — `database.user`, `openbao.active_node`, token TTL.
+- http://localhost:3000/status — `database_user`, `database_user_in_use`, `openbao_active_node`.
 
 ### 5. Watch renewal and rotation (just wait)
-The lab uses short TTLs so you can watch it happen: token `2m` / max `6m`, DB credentials `2m` / max `6m`.
-- Every ~minute the API **renews** both leases.
-- At 6 minutes the DB lease can't be renewed any more → the API gets a **new user**, opens a new pool and swaps (`[db] credentials reached their max TTL → rotating`). Requests keep working.
-- The token reaches its max → the API **logs in again** with AppRole.
+The lab uses short TTLs so you can watch it happen: a **periodic** token (`2m` period, renewed forever), DB credentials `2m` / max `6m`.
+- Every 30 s the API **renews** both (`[token] renewed…`, `[db] user … renewed…`).
+- At 6 minutes the DB lease can't be renewed any more → the API gets a **new user**, opens a new pool and swaps (`[db] user is near its maximum lifetime, getting a new one` → `[db] now using new user …`). Requests keep working.
+- The token is **periodic**: renewed forever, no re-login while the API runs. (A token with a max TTL would be a problem: dynamic DB users are revoked when the token that requested them expires.)
 - OpenBao **drops** expired `v-…` users from Postgres. Check in pgAdmin (:5051): Login/Group Roles.
 
 Production TTLs are longer (e.g. 1h / 24h). The mechanism is the same.
@@ -125,6 +126,13 @@ docker compose -f reference/docker-compose.yml restart unsealer bao-1 bao-2 bao-
 - The unsealer unlocks itself (static seal, LAB ONLY), then the nodes unseal themselves via transit.
 - **Electing a leader takes ~10–30 s.** Until then HAProxy has no healthy node and returns 503. That's expected.
 - The data is still there. In dev mode (learning lab) everything would be gone.
+
+> ⚠️ **Stack stopped for more than 24 hours?** The nodes' unseal token (`lab-transit-unseal-token`) is periodic with a 24h period. Nothing renews it while the stack is down, so it expires and the nodes can't unseal (`403 permission denied` in `docker compose -f reference/docker-compose.yml logs bao-1`). Fix:
+> ```powershell
+> docker compose -f reference/docker-compose.yml up -d                       # re-runs unsealer-setup → recreates the token
+> docker compose -f reference/docker-compose.yml restart bao-1 bao-2 bao-3
+> ```
+> Do this before recording a demo.
 
 ### 9. Audit log
 Every request is logged as JSON (with secret values hashed):

@@ -16,3 +16,4 @@ CREATE ROLE app_runtime LOGIN PASSWORD 'runtime-dev-only';
 
 -- Used only by PgBouncer to look up other users' password hashes (auth_query).
 CREATE ROLE pgbouncer_auth LOGIN PASSWORD 'pgbouncer-dev-only';
+

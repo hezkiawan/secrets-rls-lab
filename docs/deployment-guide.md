@@ -60,7 +60,7 @@ After every restart OpenBao is **sealed** and needs its root key. The options in
 | KMIP server | ✅ | Needs a KMIP-capable key server | Only if we buy one |
 | PKCS#11 / HSM | Plugin (since 2.7) | Tencent Cloud HSM: **not verified** | Possible later |
 | AWS / Azure / GCP / OCI / AliCloud KMS | Plugins (since 2.7) | Cross-cloud dependency | Only if we accept depending on another cloud |
-| Tencent KMS | ❌ none | — | Not available. **Note:** the `tcloudpublic` seal is *T Cloud Public* (T-Systems), **not Tencent** |
+| Tencent Cloud KMS | ❌ no seal plugin | Tencent **does sell** a KMS (HSM-backed, monthly subscription), but OpenBao has no seal for it. Wrapper code exists in OpenBao's `go-kms-wrapping` library, listed in the [auto-unseal plugins RFC](https://openbao.org/community/rfcs/auto-unseal-plugins/), but it isn't shipped as a plugin | Not usable today. Watch for a future plugin. **Note:** the `tcloudpublic` seal is *T Cloud Public* (T-Systems), **not Tencent** |
 
 **Transit in one paragraph:** a small separate OpenBao (the *unsealer*) holds an encryption key `autounseal`. Each main node has a token that may only `encrypt`/`decrypt` with that key. At startup a node asks the unsealer to decrypt its root key → unsealed with no human. In production the unsealer itself is unsealed **manually with Shamir** by key holders. (Our lab unsealer uses a `static` seal so it restarts unattended. That's lab only.) It restarts rarely, and it only needs to be reachable when a main node **starts**, not while the cluster runs.
 
@@ -205,7 +205,7 @@ auth/approle/role/kouventa-api
   - `secret_id_num_uses`
   - `secret_id_bound_cidrs` (only the app VMs' IPs)
   - response wrapping
-- The app renews its token and logs in again at max TTL (`KeepLoggedIn` in our Go code).
+- Use a **periodic** token (`token_period`, no max TTL): the app renews it forever (`KeepLoggedIn`). Dynamic DB users are revoked when the token that requested them expires, so a max-TTL token would cut them off at every re-login.
 
 ### 5.3 Moving a `.env` file
 
