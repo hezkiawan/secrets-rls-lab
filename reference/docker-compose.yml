@@ -1,10 +1,11 @@
 # reference/docker-compose.yml — the production-like reference stack.
 #
 # In real life each service here is its own VM (or managed service). The config files
-# mounted below are the same files you'd put on those VMs. See docs/deployment-guide.md.
+# mounted below are the same files you'd put on those VMs. Production guidance: the research
+# report in docs/ (chapter 13).
 #
-# M3: PostgreSQL with RLS  +  PgBouncer (transaction pooling)
-# M5: 3-node OpenBao cluster (Raft, transit auto-unseal) + HAProxy load balancer
+# PostgreSQL with RLS  +  PgBouncer (transaction pooling)
+# 3-node OpenBao cluster (Raft, transit auto-unseal) + HAProxy load balancer
 #
 # Start:   docker compose -f reference/docker-compose.yml up -d --build
 # Reset:   docker compose -f reference/docker-compose.yml down -v   (deletes ALL data)
@@ -171,7 +172,6 @@ services:
     volumes:
       - ./scripts:/scripts:ro
       - ./openbao/policies:/policies:ro
-      - ../bootstrap:/bootstrap:ro      # reuses the fake Firebase key file
       - ./scripts:/env:ro               # example.env for the import demo
       - ./.secrets:/secrets             # init.json (LAB ONLY, git-ignored)
       - ./backups:/backups              # Raft snapshots (git-ignored)

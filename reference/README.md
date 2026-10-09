@@ -1,4 +1,4 @@
-# Reference stack — production-like OpenBao + PostgreSQL (M3 + M5)
+# Reference stack — production-like OpenBao + PostgreSQL
 
 This folder is what the team can copy from. Each container here = **one VM in production**, and the config files are the same files you'd put on those VMs.
 
@@ -17,12 +17,12 @@ This folder is what the team can copy from. Each container here = **one VM in pr
 | `haproxy` | **8300** (OpenBao API + UI), 8404 (stats page) | The one address apps use; always routes to the active node |
 | `bao-1/2/3` | 8201 / 8202 / 8203 | 3-node OpenBao cluster, Raft storage (survives 1 node failure) |
 | `unsealer` | — | Small separate OpenBao that holds the key that unlocks the cluster (transit auto-unseal) |
-| `postgres` | 5433 | Database with RLS (M3) |
+| `postgres` | 5433 | Database with RLS |
 | `pgbouncer` | 6432 | Connection pooler (transaction mode); looks up users with `auth_query` |
 | `pgadmin` | 5051 | Database GUI |
 | `tools` | — | Admin toolbox to run `scripts/` (init, configure, import-env, snapshot) |
 
-## What M5 proves
+## What this stack proves
 
 | Team requirement | Where | Demo |
 |---|---|---|
@@ -166,7 +166,7 @@ docker compose -f reference/docker-compose.yml logs bao-1 --tail 20
 | AppRole `secret_id` in a file, created by the admin script | Delivered by the deploy pipeline, short-lived / limited uses |
 | All on one machine | 3–5 VMs across availability zones; firewall allows only 8200 (clients) and 8201 (cluster) |
 
-The full guide is in `docs/deployment-guide.md`.
+The full production guide is chapter 13 of the [research report](../docs/Secrets-Management-and-RLS-Research-Report.pdf).
 
 ## OpenBao 2.7 notes (things that differ from older tutorials)
 - No `file` storage backend → Raft everywhere (even the single-node unsealer).

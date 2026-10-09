@@ -24,7 +24,7 @@ if ! bao kv get secret/kouventa/app >/dev/null 2>&1; then
     jwt_signing_key="$(head -c 32 /dev/urandom | base64)" \
     meta_api_token="EAAG-fake-meta-business-token-for-the-lab"
 fi
-bao kv put secret/kouventa/firebase service_account_json=@/bootstrap/fake-firebase-service-account.json >/dev/null
+bao kv put secret/kouventa/firebase service_account_json=@/scripts/fake-firebase-service-account.json >/dev/null
 # LAB ONLY (for the "owner bypasses RLS" demo). Never give an app the owner's login.
 bao kv put secret/kouventa/db-owner username="app_owner" password="owner-dev-only" >/dev/null
 bao kv put secret/kouventa/admin/break-glass note="humans only, never the app" >/dev/null

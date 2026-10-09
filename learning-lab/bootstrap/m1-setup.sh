@@ -3,7 +3,7 @@
 # Does exactly what you did by hand in the OpenBao UI, so it can be repeated,
 # reviewed in git, and re-run after every dev-mode restart (dev mode forgets everything).
 #
-# Run from the project root:   docker compose run --rm bootstrap
+# Run from learning-lab/:   docker compose run --rm bootstrap
 set -eu
 CLI="${CLI:-bao}"   # "bao" for OpenBao, "vault" for HashiCorp Vault — same commands
 

@@ -8,8 +8,7 @@ api/api.exe
 .env.*
 
 # AppRole credentials written by the bootstrap ("secret zero") — never commit
-api/.openbao/
-api/.vault/
+learning-lab/.out/
 
 # Editors / OS
 .vscode/

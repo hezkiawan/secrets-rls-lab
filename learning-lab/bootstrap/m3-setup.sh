@@ -2,7 +2,7 @@
 # M3 bootstrap — store the API's database logins in OpenBao.
 # The API reads them at startup (never from a config file).
 #
-# Run from the project root:   docker compose run --rm bootstrap /bootstrap/m3-setup.sh
+# Run from learning-lab/:   docker compose run --rm bootstrap /bootstrap/m3-setup.sh
 # Requires M1 (policy kouventa-app already allows reading secret/kouventa/*).
 set -eu
 CLI="${CLI:-bao}"

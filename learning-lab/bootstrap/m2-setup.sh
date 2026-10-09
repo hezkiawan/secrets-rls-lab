@@ -3,7 +3,7 @@
 # OpenBao gets admin access to Postgres, and from then on creates a brand-new,
 # short-lived Postgres user every time someone with permission asks for one.
 #
-# Run from the project root:   docker compose run --rm bootstrap /bootstrap/m2-setup.sh
+# Run from learning-lab/:   docker compose run --rm bootstrap /bootstrap/m2-setup.sh
 # Commands follow the OpenBao docs: Secrets engines → Databases → PostgreSQL (v2.7.x).
 set -eu
 CLI="${CLI:-bao}"   # "bao" for OpenBao, "vault" for HashiCorp Vault — same commands
