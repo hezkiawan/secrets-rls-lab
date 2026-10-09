@@ -7,6 +7,8 @@ Research and a working lab for the production team, answering two questions:
 
 Everything runs on one laptop with Docker, using our own stack: Go + Fiber v3, PostgreSQL and PgBouncer.
 
+[Documentation Artifacts](https://drive.google.com/drive/folders/1H-RT2_iCT8kbQw9moG9KQ0offt0nCszh?usp=sharing)
+
 ## The answer in short
 
 - **Use OpenBao** (open source, MPL 2.0). It's the same API, CLI and Go client as Vault, and the features Vault charges for (namespaces, standby reads, control groups) are free.
