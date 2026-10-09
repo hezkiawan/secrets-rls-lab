@@ -1,7 +1,7 @@
 # demo.ps1 — short commands for recording the video demo (PowerShell, from the repo root).
-#
+# How to load into powershell terminal
 #   Set-ExecutionPolicy -Scope Process Bypass    # lets this window run .ps1 files
-#   . .\reference\scripts\demo.ps1               # a dot, a space, then the path
+#   .\reference\scripts\demo.ps1                 # a dot, a space, then the path
 #
 # Every function is a thin wrapper around a command we already use (docker compose, bao, curl, psql).
 # No function prints a token: tokens are read from reference/.secrets/*.json (LAB ONLY) only when needed.

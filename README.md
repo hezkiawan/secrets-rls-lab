@@ -95,4 +95,4 @@ This lab turns off TLS, keeps the root token and recovery keys in a file, uses f
 
 Checked October 2026: OpenBao 2.7.1 · Vault Community 2.1.1 (for the comparison) · PostgreSQL 18 · PgBouncer 1.24 · HAProxy 3.4 · Go + Fiber v3.5.0 · pgx v5.11
 
-Research and lab by Hezki (technical research intern, production team), October 2026.
+Research and lab by Hezki (developer intern, production team), October 2026.
